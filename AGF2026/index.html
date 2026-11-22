@@ -80,11 +80,12 @@
       overflow-wrap: anywhere;
     }
     #selection.active { color: #231d33; font-weight: 700; }
-    #selection .code { background: #2f2246; color: #fff; }
-    #zoom {
-      flex: none;
+    #selection .code { max-width: 100%; background: #fff0ba; color: #593600; }
+    .zoom-controls { display: flex; align-items: center; gap: .3rem; }
+    .zoom-controls button {
+      min-width: 44px;
       min-height: 44px;
-      padding-inline: .8rem;
+      padding-inline: .55rem;
       border: 1px solid #ddd7ed;
       border-radius: .55rem;
       background: #f6f1ff;
@@ -94,7 +95,9 @@
       font-weight: 700;
       cursor: pointer;
     }
-    #zoom:hover { background: #eee4fb; }
+    .zoom-controls button:not(:disabled):hover { background: #eee4fb; }
+    .zoom-controls button:disabled { opacity: .58; cursor: default; }
+    #zoom-in, #zoom-out { font-size: 1.15rem; }
     .map-tools {
       display: flex;
       flex: none;
@@ -109,7 +112,11 @@
       border: 1px solid #d6cce4;
       border-radius: .35rem;
       background: white;
+      touch-action: none;
+      user-select: none;
+      cursor: grab;
     }
+    #minimap[data-dragging] { cursor: grabbing; }
     #minimap .area, #minimap .pin { border-radius: 1px; }
     #minimap .pin.is-selected {
       z-index: 1;
@@ -132,6 +139,12 @@
       background: linear-gradient(white, white) padding-box,
         linear-gradient(110deg, #2dadd5, #eb66a6) border-box;
     }
+    #viewport[data-gestures] {
+      touch-action: none;
+      user-select: none;
+      cursor: grab;
+    }
+    #viewport[data-panning], #viewport[data-panning] .pin { cursor: grabbing; }
     #map {
       position: relative;
       isolation: isolate;
@@ -139,8 +152,10 @@
       aspect-ratio: 1130 / 664;
       background: white;
       container-type: inline-size;
+      -webkit-text-size-adjust: none;
+      text-size-adjust: none;
     }
-    #map.zoomed { width: max(155%, 1000px); }
+    #map.zoomed { width: var(--map-width); }
     .A { --color: #d3519b; --ink: #4e0c31; }
     .B { --color: #f4c840; --ink: #452c02; }
     .C { --color: #35a9cf; --ink: #062e3c; }
@@ -167,15 +182,34 @@
       font-size: clamp(3px, 1cqw, 14px);
     }
     .pin.compact { font-size: clamp(2px, .54cqw, 10px); }
+    #map .pin {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
+      container-type: size;
+    }
+    .pin-label {
+      width: 100%;
+      max-height: 100%;
+      overflow: hidden;
+      font-size: min(14px, 46cqw, 68cqh);
+    }
+    .pin.P .pin-label { font-size: min(12px, 15cqw, 68cqh); }
     #map.has-selection .pin:not(.is-selected, :hover, :focus-visible) { opacity: .65; }
-    .pin:hover, .pin:focus-visible { z-index: 2; outline: 2px solid #251628; outline-offset: 0; }
+    .pin:focus-visible { z-index: 2; outline: 2px solid #5128a8; outline-offset: 0; }
+    @media (hover: hover) {
+      .pin:hover { z-index: 2; outline: 2px solid #251628; outline-offset: 0; }
+    }
     #map .pin.is-selected, #map:not(.enhanced) .pin:target {
       z-index: 3;
-      outline: 2px solid #221437;
+      outline: 2px solid #c77a00;
       outline-offset: 0;
+      box-shadow: 0 0 0 3px #ffe35e;
+    }
+    #map.zoomed .pin.is-selected {
+      outline-color: #221437;
       box-shadow: 0 0 0 5px #ffe35e, 0 2px 12px 3px #2214374d;
     }
-    .pin[aria-current="location"]::after {
+    #map.zoomed .pin[aria-current="location"]::after {
       position: absolute;
       pointer-events: none;
       bottom: calc(100% + 8px);
@@ -189,6 +223,7 @@
       content: attr(data-selected-label);
     }
     .area {
+      overflow: hidden;
       pointer-events: none;
       color: #fff;
       font-size: clamp(4px, .77cqw, 12px);
@@ -302,10 +337,15 @@
       .toolbar { padding-inline: .65rem; }
       #viewport { max-height: none; border-inline: 0; border-radius: 0; }
       #viewport.zoomed { height: clamp(10rem, 40vh, 21rem); height: clamp(10rem, 40svh, 21rem); }
-      #map.zoomed { width: max(200%, 1150px); }
+      #map:not(.zoomed) .pin.compact .pin-label { visibility: hidden; }
       #booths { max-height: none; overflow: visible; }
       .category h3 { position: static; }
       .booth-row { min-height: 44px; }
+    }
+    @media (max-width: 560px) {
+      .toolbar { flex-wrap: wrap; }
+      .map-tools { width: 100%; justify-content: flex-end; }
+      .map-tools:has(#minimap:not([hidden])) { justify-content: space-between; }
     }
     @media (max-height: 420px) {
       .map-panel { position: static; }
@@ -326,10 +366,14 @@
         <div class="toolbar">
           <p id="selection" role="status"><span class="code" hidden></span><span>부스 이름이나 지도 번호를 선택하세요.</span></p>
           <div class="map-tools">
-            <div id="minimap" role="img" aria-label="미니맵의 사각형은 현재 보고 있는 지도 범위입니다." hidden>
-              <span id="minimap-range"></span>
+            <div id="minimap" role="group" tabindex="0" aria-label="미니맵. 사각형을 끌거나 방향키를 눌러 지도 이동" hidden>
+              <span id="minimap-range" aria-hidden="true"></span>
             </div>
-            <button id="zoom" type="button" aria-controls="viewport" hidden>확대</button>
+            <div class="zoom-controls" aria-label="지도 확대 및 축소" role="group" hidden>
+              <button id="zoom-out" type="button" aria-label="지도 축소" aria-controls="viewport" disabled>−</button>
+              <button id="zoom-in" type="button" aria-label="지도 확대" aria-controls="viewport">+</button>
+              <button id="zoom-reset" type="button" aria-controls="viewport" disabled>전체 보기</button>
+            </div>
           </div>
         </div>
         <div id="viewport" tabindex="0" role="region" aria-label="1층 지도">
@@ -363,114 +407,114 @@
             <span class="area gate" style="left:84.956%;top:88.253%;width:4.779%;height:2.711%">▲ ▼</span>
             <span class="area wc" style="left:82.566%;top:90.964%;width:1.77%;height:3.163%">WC</span>
             <span class="area wc" style="left:90.442%;top:90.964%;width:1.77%;height:3.163%">WC</span>
-            <a id="booth-A01" class="pin A" href="#booth-A01" style="left:40.177%;top:78.012%;width:3.805%;height:4.669%" aria-label="A01 viviON">A01</a>
-            <a id="booth-A02" class="pin A" href="#booth-A02" style="left:47.611%;top:74.699%;width:9.292%;height:7.982%" aria-label="A02 실버팰리스">A02</a>
-            <a id="booth-A03" class="pin A" href="#booth-A03" style="left:61.062%;top:74.699%;width:2.832%;height:7.982%" aria-label="A03 세가/아틀러스">A03</a>
-            <a id="booth-A04" class="pin A" href="#booth-A04" style="left:67.434%;top:76.355%;width:7.08%;height:6.325%" aria-label="A04 요스타">A04</a>
-            <a id="booth-A05" class="pin A" href="#booth-A05" style="left:6.549%;top:66.114%;width:2.743%;height:3.163%" aria-label="A05 소녀전선 : 블루코버넌트">A05</a>
-            <a id="booth-A06" class="pin A" href="#booth-A06" style="left:21.593%;top:62.048%;width:7.345%;height:7.982%" aria-label="A06 페이트/그랜드 오더">A06</a>
-            <a id="booth-A07" class="pin A" href="#booth-A07" style="left:31.77%;top:63.705%;width:4.513%;height:6.175%" aria-label="A07 아크시스템웍스 아시아">A07</a>
-            <a id="booth-A08" class="pin A" href="#booth-A08" style="left:66.549%;top:53.464%;width:3.805%;height:7.982%" aria-label="A08 hololive Dreams">A08</a>
-            <a id="booth-A09" class="pin A" href="#booth-A09" style="left:73.805%;top:57.229%;width:2.655%;height:3.163%" aria-label="A09 고양이와 스프">A09</a>
-            <a id="booth-A10" class="pin A" href="#booth-A10" style="left:79.027%;top:52.56%;width:2.743%;height:4.819%" aria-label="A10 에피드게임즈의 공식입장이 아닙니다">A10</a>
-            <a id="booth-A11" class="pin A" href="#booth-A11" style="left:3.363%;top:36.596%;width:3.186%;height:18.825%" aria-label="A11 스마일게이트">A11</a>
-            <a id="booth-A12" class="pin A" href="#booth-A12" style="left:9.204%;top:36.596%;width:9.381%;height:9.488%" aria-label="A12 브라운더스트2">A12</a>
-            <a id="booth-A13" class="pin A" href="#booth-A13" style="left:30.177%;top:39.006%;width:3.717%;height:8.133%" aria-label="A13 스콘">A13</a>
-            <a id="booth-A14" class="pin A" href="#booth-A14" style="left:44.602%;top:40.813%;width:9.204%;height:7.681%" aria-label="A14 파레이돌리아">A14</a>
-            <a id="booth-A15" class="pin A" href="#booth-A15" style="left:42.212%;top:33.283%;width:4.69%;height:3.163%" aria-label="A15 위메이드커넥트">A15</a>
-            <a id="booth-A16" class="pin A" href="#booth-A16" style="left:50.708%;top:28.464%;width:9.381%;height:7.982%" aria-label="A16 아주르 프로밀리아">A16</a>
-            <a id="booth-A17" class="pin A" href="#booth-A17" style="left:66.195%;top:25.452%;width:6.195%;height:7.38%" aria-label="A17 승리의 여신: 니케">A17</a>
-            <a id="booth-A18" class="pin A compact" href="#booth-A18" style="left:9.292%;top:30.12%;width:1.858%;height:1.506%" aria-label="A18 스테퍼 레트로: 초능력 추리 퀘스트">A18</a>
-            <a id="booth-A19" class="pin A compact" href="#booth-A19" style="left:22.035%;top:30.12%;width:0.973%;height:1.506%" aria-label="A19 하나미즈온천아카데미 커플쳐부수기">A19</a>
-            <a id="booth-A20" class="pin A compact" href="#booth-A20" style="left:3.363%;top:28.464%;width:1.947%;height:1.506%" aria-label="A20 주식회사 에어캡">A20</a>
-            <a id="booth-A21" class="pin A compact" href="#booth-A21" style="left:9.292%;top:28.464%;width:1.858%;height:1.506%" aria-label="A21 주식회사 브릿지뮤직">A21</a>
-            <a id="booth-A22" class="pin A compact" href="#booth-A22" style="left:15.221%;top:28.464%;width:2.743%;height:1.506%" aria-label="A22 Japan Pavilion (JETRO)">A22</a>
-            <a id="booth-A23" class="pin A compact" href="#booth-A23" style="left:3.363%;top:23.645%;width:1.947%;height:1.657%" aria-label="A23 SBS아카데미 게임학원">A23</a>
-            <a id="booth-A24" class="pin A compact" href="#booth-A24" style="left:12.743%;top:23.645%;width:0.973%;height:1.657%" aria-label="A24 요시요시 스튜디오">A24</a>
-            <a id="booth-A25" class="pin A compact" href="#booth-A25" style="left:15.221%;top:23.645%;width:2.743%;height:1.657%" aria-label="A25 STACKER BATTLE">A25</a>
-            <a id="booth-A26" class="pin A compact" href="#booth-A26" style="left:19.558%;top:23.645%;width:0.973%;height:1.657%" aria-label="A26 실버레인">A26</a>
-            <a id="booth-A27" class="pin A compact" href="#booth-A27" style="left:9.292%;top:22.139%;width:1.858%;height:1.506%" aria-label="A27 탭웨이브">A27</a>
-            <a id="booth-A28" class="pin A compact" href="#booth-A28" style="left:3.363%;top:17.922%;width:0.973%;height:1.506%" aria-label="A28 미술관에 남자가 너무 많아!">A28</a>
-            <a id="booth-A29" class="pin A compact" href="#booth-A29" style="left:13.009%;top:17.922%;width:1.858%;height:1.506%" aria-label="A29 뮤즈 대쉬 2">A29</a>
-            <a id="booth-A30" class="pin A compact" href="#booth-A30" style="left:7.699%;top:16.416%;width:1.858%;height:1.506%" aria-label="A30 위프">A30</a>
-            <a id="booth-A31" class="pin A compact" href="#booth-A31" style="left:19.027%;top:16.416%;width:1.77%;height:1.506%" aria-label="A31 러브딜리버리 주희 애프터 스토리">A31</a>
-            <a id="booth-A32" class="pin A compact" href="#booth-A32" style="left:24.602%;top:5.723%;width:1.77%;height:6.325%" aria-label="A32 (주) 밸로프">A32</a>
-            <a id="booth-A33" class="pin A" href="#booth-A33" style="left:29.469%;top:5.723%;width:18.584%;height:6.325%" aria-label="A33 아스트라에 오라티오">A33</a>
-            <a id="booth-A34" class="pin A" href="#booth-A34" style="left:51.416%;top:7.982%;width:2.743%;height:4.066%" aria-label="A34 뱅드림! 아워 노트">A34</a>
-            <a id="booth-A35" class="pin A compact" href="#booth-A35" style="left:57.876%;top:5.723%;width:1.858%;height:6.325%" aria-label="A35 지니뮤직 / 아우터플레인">A35</a>
-            <a id="booth-B01" class="pin B" href="#booth-B01" style="left:30.708%;top:74.699%;width:6.46%;height:7.982%" aria-label="B01 네이버웹툰">B01</a>
-            <a id="booth-B02" class="pin B" href="#booth-B02" style="left:87.168%;top:74.699%;width:5.575%;height:7.982%" aria-label="B02 애니플러스샵">B02</a>
-            <a id="booth-B03" class="pin B compact" href="#booth-B03" style="left:17.08%;top:52.41%;width:1.77%;height:4.819%" aria-label="B03 대원미디어 그룹">B03</a>
-            <a id="booth-B04" class="pin B" href="#booth-B04" style="left:52.212%;top:65.06%;width:4.69%;height:4.819%" aria-label="B04 애니메이트">B04</a>
-            <a id="booth-B05" class="pin B compact" href="#booth-B05" style="left:60.973%;top:62.199%;width:1.858%;height:7.831%" aria-label="B05 에스엠지홀딩스">B05</a>
-            <a id="booth-B06" class="pin B" href="#booth-B06" style="left:79.027%;top:62.048%;width:2.743%;height:7.831%" aria-label="B06 극장판 귀멸의 칼날: 무한성편 제1장">B06</a>
-            <a id="booth-B07" class="pin B compact" href="#booth-B07" style="left:24.248%;top:54.066%;width:1.858%;height:3.163%" aria-label="B07 애니프릭스">B07</a>
-            <a id="booth-B08" class="pin B" href="#booth-B08" style="left:40.177%;top:53.916%;width:9.115%;height:15.964%" aria-label="B08 KADOKAWA">B08</a>
-            <a id="booth-B09" class="pin B compact" href="#booth-B09" style="left:93.717%;top:66.566%;width:0.885%;height:3.313%" aria-label="B09 Aniplex Inc.">B09</a>
-            <a id="booth-B10" class="pin B" href="#booth-B10" style="left:22.655%;top:43.675%;width:4.867%;height:4.819%" aria-label="B10 크런치롤">B10</a>
-            <a id="booth-B11" class="pin B" href="#booth-B11" style="left:23.982%;top:36.596%;width:2.389%;height:3.163%" aria-label="B11 Hakuhodo DY Music &amp; Pictures Inc.">B11</a>
-            <a id="booth-B12" class="pin B compact" href="#booth-B12" style="left:19.558%;top:30.12%;width:0.973%;height:1.506%" aria-label="B12 한국영상대학교 만화웹툰전공">B12</a>
-            <a id="booth-B13" class="pin B compact" href="#booth-B13" style="left:31.327%;top:30.12%;width:1.947%;height:1.506%" aria-label="B13 케이티스튜디오지니">B13</a>
-            <a id="booth-C01" class="pin C" href="#booth-C01" style="left:12.301%;top:76.355%;width:5.664%;height:6.325%" aria-label="C01 프레젠스월드 / 굿스마일컴퍼니 / 메가하우스 / 부시로드 크리에이티브 / CCS">C01</a>
-            <a id="booth-C02" class="pin C compact" href="#booth-C02" style="left:74.425%;top:66.867%;width:1.858%;height:3.012%" aria-label="C02 서울미디어코믹스">C02</a>
-            <a id="booth-C03" class="pin C" href="#booth-C03" style="left:31.681%;top:50.904%;width:4.602%;height:6.325%" aria-label="C03 디앤씨미디어">C03</a>
-            <a id="booth-C04" class="pin C compact" href="#booth-C04" style="left:37.08%;top:33.283%;width:1.858%;height:3.163%" aria-label="C04 와이앤케이미디어">C04</a>
-            <a id="booth-C05" class="pin C compact" href="#booth-C05" style="left:6.814%;top:30.12%;width:0.973%;height:1.506%" aria-label="C05 티토이스튜디오">C05</a>
-            <a id="booth-C06" class="pin C compact" href="#booth-C06" style="left:12.743%;top:30.12%;width:0.973%;height:1.506%" aria-label="C06 디엠피북스">C06</a>
-            <a id="booth-C07" class="pin C compact" href="#booth-C07" style="left:15.221%;top:30.12%;width:2.743%;height:1.506%" aria-label="C07 한림사">C07</a>
-            <a id="booth-C08" class="pin C compact" href="#booth-C08" style="left:24.513%;top:30.12%;width:1.858%;height:1.506%" aria-label="C08 소미미디어">C08</a>
-            <a id="booth-C09" class="pin C compact" href="#booth-C09" style="left:27.965%;top:28.464%;width:1.858%;height:3.163%" aria-label="C09 하비프러스">C09</a>
-            <a id="booth-C10" class="pin C compact" href="#booth-C10" style="left:6.814%;top:28.464%;width:0.973%;height:1.506%" aria-label="C10 블룸">C10</a>
-            <a id="booth-C11" class="pin C compact" href="#booth-C11" style="left:22.035%;top:28.464%;width:0.973%;height:1.506%" aria-label="C11 루츠돌">C11</a>
-            <a id="booth-C12" class="pin C compact" href="#booth-C12" style="left:24.513%;top:28.464%;width:1.858%;height:1.506%" aria-label="C12 Minboo LTD">C12</a>
-            <a id="booth-C13" class="pin C" href="#booth-C13" style="left:66.903%;top:14.608%;width:5.487%;height:6.476%" aria-label="C13 AmiAmi">C13</a>
-            <a id="booth-C14" class="pin C compact" href="#booth-C14" style="left:3.363%;top:22.139%;width:1.947%;height:1.506%" aria-label="C14 포카이브 스테이션">C14</a>
-            <a id="booth-C15" class="pin C compact" href="#booth-C15" style="left:6.814%;top:22.139%;width:0.973%;height:1.506%" aria-label="C15 배재대학교 게임애니메이션전공">C15</a>
-            <a id="booth-C16" class="pin C compact" href="#booth-C16" style="left:15.221%;top:22.139%;width:2.743%;height:1.506%" aria-label="C16 노벨피아">C16</a>
-            <a id="booth-C17" class="pin C compact" href="#booth-C17" style="left:19.558%;top:22.139%;width:0.973%;height:1.506%" aria-label="C17 잇츠하비">C17</a>
-            <a id="booth-C18" class="pin C compact" href="#booth-C18" style="left:22.124%;top:22.139%;width:0.973%;height:1.506%" aria-label="C18 델라키">C18</a>
-            <a id="booth-C19" class="pin C compact" href="#booth-C19" style="left:11.15%;top:17.922%;width:1.858%;height:1.506%" aria-label="C19 이스타에그">C19</a>
-            <a id="booth-C20" class="pin C compact" href="#booth-C20" style="left:19.027%;top:17.922%;width:1.77%;height:1.506%" aria-label="C20 스튜디오오리진">C20</a>
-            <a id="booth-C21" class="pin C compact" href="#booth-C21" style="left:3.363%;top:16.416%;width:0.973%;height:1.506%" aria-label="C21 럭앤픽">C21</a>
-            <a id="booth-C22" class="pin C compact" href="#booth-C22" style="left:5.841%;top:16.416%;width:1.858%;height:1.506%" aria-label="C22 하이라이트 픽">C22</a>
-            <a id="booth-C23" class="pin C compact" href="#booth-C23" style="left:11.15%;top:16.416%;width:3.717%;height:1.506%" aria-label="C23 키쿠">C23</a>
-            <a id="booth-C24" class="pin C compact" href="#booth-C24" style="left:16.46%;top:16.416%;width:0.973%;height:1.506%" aria-label="C24 가우리피규어">C24</a>
-            <a id="booth-C25" class="pin C" href="#booth-C25" style="left:3.451%;top:8.886%;width:4.69%;height:3.163%" aria-label="C25 GNFTOYZ &amp; 솜꼬리">C25</a>
-            <a id="booth-C26" class="pin C compact" href="#booth-C26" style="left:14.602%;top:5.723%;width:1.858%;height:6.325%" aria-label="C26 52TOYS · 화모선">C26</a>
-            <a id="booth-C27" class="pin C compact" href="#booth-C27" style="left:19.646%;top:5.723%;width:1.77%;height:6.325%" aria-label="C27 블로키코리아 유한책임회사">C27</a>
-            <a id="booth-D01" class="pin D compact" href="#booth-D01" style="left:8.319%;top:76.205%;width:1.416%;height:2.41%" aria-label="D01 DJ Kazu">D01</a>
-            <a id="booth-D02" class="pin D" href="#booth-D02" style="left:21.593%;top:74.699%;width:4.69%;height:7.982%" aria-label="D02 Bushiroad">D02</a>
-            <a id="booth-D03" class="pin D" href="#booth-D03" style="left:78.584%;top:77.41%;width:4.956%;height:5.271%" aria-label="D03 구글플레이">D03</a>
-            <a id="booth-D04" class="pin D compact" href="#booth-D04" style="left:93.717%;top:60.392%;width:0.885%;height:6.175%" aria-label="D04 스마일게이트 희망스튜디오">D04</a>
-            <a id="booth-D05" class="pin D" href="#booth-D05" style="left:10.531%;top:54.066%;width:2.832%;height:3.163%" aria-label="D05 NIJISANJI">D05</a>
-            <a id="booth-D06" class="pin D" href="#booth-D06" style="left:51.416%;top:53.916%;width:5.487%;height:3.313%" aria-label="D06 AMD · SANDISK">D06</a>
-            <a id="booth-D07" class="pin D" href="#booth-D07" style="left:59.115%;top:53.916%;width:3.717%;height:3.313%" aria-label="D07 레노버">D07</a>
-            <a id="booth-D08" class="pin D" href="#booth-D08" style="left:56.372%;top:40.813%;width:3.717%;height:7.681%" aria-label="D08 베이비챗">D08</a>
-            <a id="booth-D09" class="pin D" href="#booth-D09" style="left:64.425%;top:40.813%;width:8.053%;height:7.681%" aria-label="D09 SOOP">D09</a>
-            <a id="booth-D10" class="pin D compact" href="#booth-D10" style="left:3.363%;top:30.12%;width:1.947%;height:1.506%" aria-label="D10 뮤">D10</a>
-            <a id="booth-D11" class="pin D compact" href="#booth-D11" style="left:12.743%;top:28.464%;width:0.973%;height:1.506%" aria-label="D11 크리에이터버스">D11</a>
-            <a id="booth-D12" class="pin D compact" href="#booth-D12" style="left:19.558%;top:28.464%;width:0.973%;height:1.506%" aria-label="D12 콘텐츠 인재들의 부트캠프, GCC사관학교">D12</a>
-            <a id="booth-D13" class="pin D compact" href="#booth-D13" style="left:31.327%;top:28.464%;width:1.947%;height:1.506%" aria-label="D13 샤카샤카">D13</a>
-            <a id="booth-D14" class="pin D compact" href="#booth-D14" style="left:6.814%;top:23.645%;width:0.973%;height:1.657%" aria-label="D14 홀로시브">D14</a>
-            <a id="booth-D15" class="pin D compact" href="#booth-D15" style="left:9.292%;top:23.645%;width:1.858%;height:1.657%" aria-label="D15 국경없는의사회">D15</a>
-            <a id="booth-D16" class="pin D compact" href="#booth-D16" style="left:22.124%;top:23.645%;width:0.973%;height:1.657%" aria-label="D16 스튜디오 세뇨">D16</a>
-            <a id="booth-D17" class="pin D compact" href="#booth-D17" style="left:24.513%;top:22.139%;width:1.858%;height:3.163%" aria-label="D17 그린기린">D17</a>
-            <a id="booth-D18" class="pin D" href="#booth-D18" style="left:53.186%;top:17.922%;width:3.717%;height:6.175%" aria-label="D18 젠잇">D18</a>
-            <a id="booth-D19" class="pin D compact" href="#booth-D19" style="left:12.743%;top:22.139%;width:0.973%;height:1.506%" aria-label="D19 VO6 TCG">D19</a>
-            <a id="booth-D20" class="pin D compact" href="#booth-D20" style="left:5.841%;top:17.922%;width:3.717%;height:1.506%" aria-label="D20 미스틱뮤즈">D20</a>
-            <a id="booth-D21" class="pin D compact" href="#booth-D21" style="left:16.46%;top:17.922%;width:0.973%;height:1.506%" aria-label="D21 민화">D21</a>
-            <a id="booth-D22" class="pin D compact" href="#booth-D22" style="left:22.389%;top:16.416%;width:1.858%;height:3.012%" aria-label="D22 카드하비">D22</a>
-            <a id="booth-D23" class="pin D compact" href="#booth-D23" style="left:10.531%;top:8.886%;width:1.947%;height:3.163%" aria-label="D23 제로모션">D23</a>
-            <a id="booth-R01" class="pin R" href="#booth-R01" style="left:13.451%;top:63.102%;width:4.513%;height:6.325%" aria-label="R01 갤럭시 스토어 리프레시존">R01</a>
-            <a id="booth-R02" class="pin R" href="#booth-R02" style="left:66.372%;top:65.06%;width:4.602%;height:6.325%" aria-label="R02 갤럭시 스토어 리프레시존">R02</a>
-            <a id="booth-R03" class="pin R" href="#booth-R03" style="left:37.08%;top:40.813%;width:4.602%;height:6.325%" aria-label="R03 갤럭시 스토어 리프레시존">R03</a>
-            <a id="booth-R04" class="pin R" href="#booth-R04" style="left:29.469%;top:16.265%;width:4.779%;height:6.627%" aria-label="R04 NC 리프레시존">R04</a>
-            <a id="booth-R05" class="pin R" href="#booth-R05" style="left:43.363%;top:16.265%;width:4.779%;height:6.627%" aria-label="R05 NC 리프레시존">R05</a>
-            <a id="booth-R06" class="pin R" href="#booth-R06" style="left:64.071%;top:7.38%;width:8.407%;height:3.614%" aria-label="R06 F&amp;B 리프레시존">R06</a>
-            <a id="booth-E01" class="pin E compact" href="#booth-E01" style="left:64.071%;top:5.723%;width:3.717%;height:1.506%" aria-label="E01 메가박스">E01</a>
-            <a id="booth-E02" class="pin E compact" href="#booth-E02" style="left:67.788%;top:5.723%;width:2.92%;height:1.506%" aria-label="E02 애니플러스 콜라보카페">E02</a>
-            <a id="booth-E03" class="pin E compact" href="#booth-E03" style="left:70.708%;top:5.723%;width:1.77%;height:1.506%" aria-label="E03 오사카당고">E03</a>
-            <a id="booth-P01" class="pin P" href="#booth-P01" style="left:36.018%;top:87.5%;width:5.752%;height:3.012%" aria-label="Photo Zone AGF 2026 Stamp Zone" data-related="booth-R04 booth-R05">Photo Zone</a>
+            <a id="booth-A01" class="pin A" href="#booth-A01" style="left:40.177%;top:78.012%;width:3.805%;height:4.669%" aria-label="A01 viviON"><span class="pin-label">A01</span></a>
+            <a id="booth-A02" class="pin A" href="#booth-A02" style="left:47.611%;top:74.699%;width:9.292%;height:7.982%" aria-label="A02 실버팰리스"><span class="pin-label">A02</span></a>
+            <a id="booth-A03" class="pin A" href="#booth-A03" style="left:61.062%;top:74.699%;width:2.832%;height:7.982%" aria-label="A03 세가/아틀러스"><span class="pin-label">A03</span></a>
+            <a id="booth-A04" class="pin A" href="#booth-A04" style="left:67.434%;top:76.355%;width:7.08%;height:6.325%" aria-label="A04 요스타"><span class="pin-label">A04</span></a>
+            <a id="booth-A05" class="pin A" href="#booth-A05" style="left:6.549%;top:66.114%;width:2.743%;height:3.163%" aria-label="A05 소녀전선 : 블루코버넌트"><span class="pin-label">A05</span></a>
+            <a id="booth-A06" class="pin A" href="#booth-A06" style="left:21.593%;top:62.048%;width:7.345%;height:7.982%" aria-label="A06 페이트/그랜드 오더"><span class="pin-label">A06</span></a>
+            <a id="booth-A07" class="pin A" href="#booth-A07" style="left:31.77%;top:63.705%;width:4.513%;height:6.175%" aria-label="A07 아크시스템웍스 아시아"><span class="pin-label">A07</span></a>
+            <a id="booth-A08" class="pin A" href="#booth-A08" style="left:66.549%;top:53.464%;width:3.805%;height:7.982%" aria-label="A08 hololive Dreams"><span class="pin-label">A08</span></a>
+            <a id="booth-A09" class="pin A" href="#booth-A09" style="left:73.805%;top:57.229%;width:2.655%;height:3.163%" aria-label="A09 고양이와 스프"><span class="pin-label">A09</span></a>
+            <a id="booth-A10" class="pin A" href="#booth-A10" style="left:79.027%;top:52.56%;width:2.743%;height:4.819%" aria-label="A10 에피드게임즈의 공식입장이 아닙니다"><span class="pin-label">A10</span></a>
+            <a id="booth-A11" class="pin A" href="#booth-A11" style="left:3.363%;top:36.596%;width:3.186%;height:18.825%" aria-label="A11 스마일게이트"><span class="pin-label">A11</span></a>
+            <a id="booth-A12" class="pin A" href="#booth-A12" style="left:9.204%;top:36.596%;width:9.381%;height:9.488%" aria-label="A12 브라운더스트2"><span class="pin-label">A12</span></a>
+            <a id="booth-A13" class="pin A" href="#booth-A13" style="left:30.177%;top:39.006%;width:3.717%;height:8.133%" aria-label="A13 스콘"><span class="pin-label">A13</span></a>
+            <a id="booth-A14" class="pin A" href="#booth-A14" style="left:44.602%;top:40.813%;width:9.204%;height:7.681%" aria-label="A14 파레이돌리아"><span class="pin-label">A14</span></a>
+            <a id="booth-A15" class="pin A" href="#booth-A15" style="left:42.212%;top:33.283%;width:4.69%;height:3.163%" aria-label="A15 위메이드커넥트"><span class="pin-label">A15</span></a>
+            <a id="booth-A16" class="pin A" href="#booth-A16" style="left:50.708%;top:28.464%;width:9.381%;height:7.982%" aria-label="A16 아주르 프로밀리아"><span class="pin-label">A16</span></a>
+            <a id="booth-A17" class="pin A" href="#booth-A17" style="left:66.195%;top:25.452%;width:6.195%;height:7.38%" aria-label="A17 승리의 여신: 니케"><span class="pin-label">A17</span></a>
+            <a id="booth-A18" class="pin A compact" href="#booth-A18" style="left:9.292%;top:30.12%;width:1.858%;height:1.506%" aria-label="A18 스테퍼 레트로: 초능력 추리 퀘스트"><span class="pin-label">A18</span></a>
+            <a id="booth-A19" class="pin A compact" href="#booth-A19" style="left:22.035%;top:30.12%;width:0.973%;height:1.506%" aria-label="A19 하나미즈온천아카데미 커플쳐부수기"><span class="pin-label">A19</span></a>
+            <a id="booth-A20" class="pin A compact" href="#booth-A20" style="left:3.363%;top:28.464%;width:1.947%;height:1.506%" aria-label="A20 주식회사 에어캡"><span class="pin-label">A20</span></a>
+            <a id="booth-A21" class="pin A compact" href="#booth-A21" style="left:9.292%;top:28.464%;width:1.858%;height:1.506%" aria-label="A21 주식회사 브릿지뮤직"><span class="pin-label">A21</span></a>
+            <a id="booth-A22" class="pin A compact" href="#booth-A22" style="left:15.221%;top:28.464%;width:2.743%;height:1.506%" aria-label="A22 Japan Pavilion (JETRO)"><span class="pin-label">A22</span></a>
+            <a id="booth-A23" class="pin A compact" href="#booth-A23" style="left:3.363%;top:23.645%;width:1.947%;height:1.657%" aria-label="A23 SBS아카데미 게임학원"><span class="pin-label">A23</span></a>
+            <a id="booth-A24" class="pin A compact" href="#booth-A24" style="left:12.743%;top:23.645%;width:0.973%;height:1.657%" aria-label="A24 요시요시 스튜디오"><span class="pin-label">A24</span></a>
+            <a id="booth-A25" class="pin A compact" href="#booth-A25" style="left:15.221%;top:23.645%;width:2.743%;height:1.657%" aria-label="A25 STACKER BATTLE"><span class="pin-label">A25</span></a>
+            <a id="booth-A26" class="pin A compact" href="#booth-A26" style="left:19.558%;top:23.645%;width:0.973%;height:1.657%" aria-label="A26 실버레인"><span class="pin-label">A26</span></a>
+            <a id="booth-A27" class="pin A compact" href="#booth-A27" style="left:9.292%;top:22.139%;width:1.858%;height:1.506%" aria-label="A27 탭웨이브"><span class="pin-label">A27</span></a>
+            <a id="booth-A28" class="pin A compact" href="#booth-A28" style="left:3.363%;top:17.922%;width:0.973%;height:1.506%" aria-label="A28 미술관에 남자가 너무 많아!"><span class="pin-label">A28</span></a>
+            <a id="booth-A29" class="pin A compact" href="#booth-A29" style="left:13.009%;top:17.922%;width:1.858%;height:1.506%" aria-label="A29 뮤즈 대쉬 2"><span class="pin-label">A29</span></a>
+            <a id="booth-A30" class="pin A compact" href="#booth-A30" style="left:7.699%;top:16.416%;width:1.858%;height:1.506%" aria-label="A30 위프"><span class="pin-label">A30</span></a>
+            <a id="booth-A31" class="pin A compact" href="#booth-A31" style="left:19.027%;top:16.416%;width:1.77%;height:1.506%" aria-label="A31 러브딜리버리 주희 애프터 스토리"><span class="pin-label">A31</span></a>
+            <a id="booth-A32" class="pin A compact" href="#booth-A32" style="left:24.602%;top:5.723%;width:1.77%;height:6.325%" aria-label="A32 (주) 밸로프"><span class="pin-label">A32</span></a>
+            <a id="booth-A33" class="pin A" href="#booth-A33" style="left:29.469%;top:5.723%;width:18.584%;height:6.325%" aria-label="A33 아스트라에 오라티오"><span class="pin-label">A33</span></a>
+            <a id="booth-A34" class="pin A" href="#booth-A34" style="left:51.416%;top:7.982%;width:2.743%;height:4.066%" aria-label="A34 뱅드림! 아워 노트"><span class="pin-label">A34</span></a>
+            <a id="booth-A35" class="pin A compact" href="#booth-A35" style="left:57.876%;top:5.723%;width:1.858%;height:6.325%" aria-label="A35 지니뮤직 / 아우터플레인"><span class="pin-label">A35</span></a>
+            <a id="booth-B01" class="pin B" href="#booth-B01" style="left:30.708%;top:74.699%;width:6.46%;height:7.982%" aria-label="B01 네이버웹툰"><span class="pin-label">B01</span></a>
+            <a id="booth-B02" class="pin B" href="#booth-B02" style="left:87.168%;top:74.699%;width:5.575%;height:7.982%" aria-label="B02 애니플러스샵"><span class="pin-label">B02</span></a>
+            <a id="booth-B03" class="pin B compact" href="#booth-B03" style="left:17.08%;top:52.41%;width:1.77%;height:4.819%" aria-label="B03 대원미디어 그룹"><span class="pin-label">B03</span></a>
+            <a id="booth-B04" class="pin B" href="#booth-B04" style="left:52.212%;top:65.06%;width:4.69%;height:4.819%" aria-label="B04 애니메이트"><span class="pin-label">B04</span></a>
+            <a id="booth-B05" class="pin B compact" href="#booth-B05" style="left:60.973%;top:62.199%;width:1.858%;height:7.831%" aria-label="B05 에스엠지홀딩스"><span class="pin-label">B05</span></a>
+            <a id="booth-B06" class="pin B" href="#booth-B06" style="left:79.027%;top:62.048%;width:2.743%;height:7.831%" aria-label="B06 극장판 귀멸의 칼날: 무한성편 제1장"><span class="pin-label">B06</span></a>
+            <a id="booth-B07" class="pin B compact" href="#booth-B07" style="left:24.248%;top:54.066%;width:1.858%;height:3.163%" aria-label="B07 애니프릭스"><span class="pin-label">B07</span></a>
+            <a id="booth-B08" class="pin B" href="#booth-B08" style="left:40.177%;top:53.916%;width:9.115%;height:15.964%" aria-label="B08 KADOKAWA"><span class="pin-label">B08</span></a>
+            <a id="booth-B09" class="pin B compact" href="#booth-B09" style="left:93.717%;top:66.566%;width:0.885%;height:3.313%" aria-label="B09 Aniplex Inc."><span class="pin-label">B09</span></a>
+            <a id="booth-B10" class="pin B" href="#booth-B10" style="left:22.655%;top:43.675%;width:4.867%;height:4.819%" aria-label="B10 크런치롤"><span class="pin-label">B10</span></a>
+            <a id="booth-B11" class="pin B" href="#booth-B11" style="left:23.982%;top:36.596%;width:2.389%;height:3.163%" aria-label="B11 Hakuhodo DY Music &amp; Pictures Inc."><span class="pin-label">B11</span></a>
+            <a id="booth-B12" class="pin B compact" href="#booth-B12" style="left:19.558%;top:30.12%;width:0.973%;height:1.506%" aria-label="B12 한국영상대학교 만화웹툰전공"><span class="pin-label">B12</span></a>
+            <a id="booth-B13" class="pin B compact" href="#booth-B13" style="left:31.327%;top:30.12%;width:1.947%;height:1.506%" aria-label="B13 케이티스튜디오지니"><span class="pin-label">B13</span></a>
+            <a id="booth-C01" class="pin C" href="#booth-C01" style="left:12.301%;top:76.355%;width:5.664%;height:6.325%" aria-label="C01 프레젠스월드 / 굿스마일컴퍼니 / 메가하우스 / 부시로드 크리에이티브 / CCS"><span class="pin-label">C01</span></a>
+            <a id="booth-C02" class="pin C compact" href="#booth-C02" style="left:74.425%;top:66.867%;width:1.858%;height:3.012%" aria-label="C02 서울미디어코믹스"><span class="pin-label">C02</span></a>
+            <a id="booth-C03" class="pin C" href="#booth-C03" style="left:31.681%;top:50.904%;width:4.602%;height:6.325%" aria-label="C03 디앤씨미디어"><span class="pin-label">C03</span></a>
+            <a id="booth-C04" class="pin C compact" href="#booth-C04" style="left:37.08%;top:33.283%;width:1.858%;height:3.163%" aria-label="C04 와이앤케이미디어"><span class="pin-label">C04</span></a>
+            <a id="booth-C05" class="pin C compact" href="#booth-C05" style="left:6.814%;top:30.12%;width:0.973%;height:1.506%" aria-label="C05 티토이스튜디오"><span class="pin-label">C05</span></a>
+            <a id="booth-C06" class="pin C compact" href="#booth-C06" style="left:12.743%;top:30.12%;width:0.973%;height:1.506%" aria-label="C06 디엠피북스"><span class="pin-label">C06</span></a>
+            <a id="booth-C07" class="pin C compact" href="#booth-C07" style="left:15.221%;top:30.12%;width:2.743%;height:1.506%" aria-label="C07 한림사"><span class="pin-label">C07</span></a>
+            <a id="booth-C08" class="pin C compact" href="#booth-C08" style="left:24.513%;top:30.12%;width:1.858%;height:1.506%" aria-label="C08 소미미디어"><span class="pin-label">C08</span></a>
+            <a id="booth-C09" class="pin C compact" href="#booth-C09" style="left:27.965%;top:28.464%;width:1.858%;height:3.163%" aria-label="C09 하비프러스"><span class="pin-label">C09</span></a>
+            <a id="booth-C10" class="pin C compact" href="#booth-C10" style="left:6.814%;top:28.464%;width:0.973%;height:1.506%" aria-label="C10 블룸"><span class="pin-label">C10</span></a>
+            <a id="booth-C11" class="pin C compact" href="#booth-C11" style="left:22.035%;top:28.464%;width:0.973%;height:1.506%" aria-label="C11 루츠돌"><span class="pin-label">C11</span></a>
+            <a id="booth-C12" class="pin C compact" href="#booth-C12" style="left:24.513%;top:28.464%;width:1.858%;height:1.506%" aria-label="C12 Minboo LTD"><span class="pin-label">C12</span></a>
+            <a id="booth-C13" class="pin C" href="#booth-C13" style="left:66.903%;top:14.608%;width:5.487%;height:6.476%" aria-label="C13 AmiAmi"><span class="pin-label">C13</span></a>
+            <a id="booth-C14" class="pin C compact" href="#booth-C14" style="left:3.363%;top:22.139%;width:1.947%;height:1.506%" aria-label="C14 포카이브 스테이션"><span class="pin-label">C14</span></a>
+            <a id="booth-C15" class="pin C compact" href="#booth-C15" style="left:6.814%;top:22.139%;width:0.973%;height:1.506%" aria-label="C15 배재대학교 게임애니메이션전공"><span class="pin-label">C15</span></a>
+            <a id="booth-C16" class="pin C compact" href="#booth-C16" style="left:15.221%;top:22.139%;width:2.743%;height:1.506%" aria-label="C16 노벨피아"><span class="pin-label">C16</span></a>
+            <a id="booth-C17" class="pin C compact" href="#booth-C17" style="left:19.558%;top:22.139%;width:0.973%;height:1.506%" aria-label="C17 잇츠하비"><span class="pin-label">C17</span></a>
+            <a id="booth-C18" class="pin C compact" href="#booth-C18" style="left:22.124%;top:22.139%;width:0.973%;height:1.506%" aria-label="C18 델라키"><span class="pin-label">C18</span></a>
+            <a id="booth-C19" class="pin C compact" href="#booth-C19" style="left:11.15%;top:17.922%;width:1.858%;height:1.506%" aria-label="C19 이스타에그"><span class="pin-label">C19</span></a>
+            <a id="booth-C20" class="pin C compact" href="#booth-C20" style="left:19.027%;top:17.922%;width:1.77%;height:1.506%" aria-label="C20 스튜디오오리진"><span class="pin-label">C20</span></a>
+            <a id="booth-C21" class="pin C compact" href="#booth-C21" style="left:3.363%;top:16.416%;width:0.973%;height:1.506%" aria-label="C21 럭앤픽"><span class="pin-label">C21</span></a>
+            <a id="booth-C22" class="pin C compact" href="#booth-C22" style="left:5.841%;top:16.416%;width:1.858%;height:1.506%" aria-label="C22 하이라이트 픽"><span class="pin-label">C22</span></a>
+            <a id="booth-C23" class="pin C compact" href="#booth-C23" style="left:11.15%;top:16.416%;width:3.717%;height:1.506%" aria-label="C23 키쿠"><span class="pin-label">C23</span></a>
+            <a id="booth-C24" class="pin C compact" href="#booth-C24" style="left:16.46%;top:16.416%;width:0.973%;height:1.506%" aria-label="C24 가우리피규어"><span class="pin-label">C24</span></a>
+            <a id="booth-C25" class="pin C" href="#booth-C25" style="left:3.451%;top:8.886%;width:4.69%;height:3.163%" aria-label="C25 GNFTOYZ &amp; 솜꼬리"><span class="pin-label">C25</span></a>
+            <a id="booth-C26" class="pin C compact" href="#booth-C26" style="left:14.602%;top:5.723%;width:1.858%;height:6.325%" aria-label="C26 52TOYS · 화모선"><span class="pin-label">C26</span></a>
+            <a id="booth-C27" class="pin C compact" href="#booth-C27" style="left:19.646%;top:5.723%;width:1.77%;height:6.325%" aria-label="C27 블로키코리아 유한책임회사"><span class="pin-label">C27</span></a>
+            <a id="booth-D01" class="pin D compact" href="#booth-D01" style="left:8.319%;top:76.205%;width:1.416%;height:2.41%" aria-label="D01 DJ Kazu"><span class="pin-label">D01</span></a>
+            <a id="booth-D02" class="pin D" href="#booth-D02" style="left:21.593%;top:74.699%;width:4.69%;height:7.982%" aria-label="D02 Bushiroad"><span class="pin-label">D02</span></a>
+            <a id="booth-D03" class="pin D" href="#booth-D03" style="left:78.584%;top:77.41%;width:4.956%;height:5.271%" aria-label="D03 구글플레이"><span class="pin-label">D03</span></a>
+            <a id="booth-D04" class="pin D compact" href="#booth-D04" style="left:93.717%;top:60.392%;width:0.885%;height:6.175%" aria-label="D04 스마일게이트 희망스튜디오"><span class="pin-label">D04</span></a>
+            <a id="booth-D05" class="pin D" href="#booth-D05" style="left:10.531%;top:54.066%;width:2.832%;height:3.163%" aria-label="D05 NIJISANJI"><span class="pin-label">D05</span></a>
+            <a id="booth-D06" class="pin D" href="#booth-D06" style="left:51.416%;top:53.916%;width:5.487%;height:3.313%" aria-label="D06 AMD · SANDISK"><span class="pin-label">D06</span></a>
+            <a id="booth-D07" class="pin D" href="#booth-D07" style="left:59.115%;top:53.916%;width:3.717%;height:3.313%" aria-label="D07 레노버"><span class="pin-label">D07</span></a>
+            <a id="booth-D08" class="pin D" href="#booth-D08" style="left:56.372%;top:40.813%;width:3.717%;height:7.681%" aria-label="D08 베이비챗"><span class="pin-label">D08</span></a>
+            <a id="booth-D09" class="pin D" href="#booth-D09" style="left:64.425%;top:40.813%;width:8.053%;height:7.681%" aria-label="D09 SOOP"><span class="pin-label">D09</span></a>
+            <a id="booth-D10" class="pin D compact" href="#booth-D10" style="left:3.363%;top:30.12%;width:1.947%;height:1.506%" aria-label="D10 뮤"><span class="pin-label">D10</span></a>
+            <a id="booth-D11" class="pin D compact" href="#booth-D11" style="left:12.743%;top:28.464%;width:0.973%;height:1.506%" aria-label="D11 크리에이터버스"><span class="pin-label">D11</span></a>
+            <a id="booth-D12" class="pin D compact" href="#booth-D12" style="left:19.558%;top:28.464%;width:0.973%;height:1.506%" aria-label="D12 콘텐츠 인재들의 부트캠프, GCC사관학교"><span class="pin-label">D12</span></a>
+            <a id="booth-D13" class="pin D compact" href="#booth-D13" style="left:31.327%;top:28.464%;width:1.947%;height:1.506%" aria-label="D13 샤카샤카"><span class="pin-label">D13</span></a>
+            <a id="booth-D14" class="pin D compact" href="#booth-D14" style="left:6.814%;top:23.645%;width:0.973%;height:1.657%" aria-label="D14 홀로시브"><span class="pin-label">D14</span></a>
+            <a id="booth-D15" class="pin D compact" href="#booth-D15" style="left:9.292%;top:23.645%;width:1.858%;height:1.657%" aria-label="D15 국경없는의사회"><span class="pin-label">D15</span></a>
+            <a id="booth-D16" class="pin D compact" href="#booth-D16" style="left:22.124%;top:23.645%;width:0.973%;height:1.657%" aria-label="D16 스튜디오 세뇨"><span class="pin-label">D16</span></a>
+            <a id="booth-D17" class="pin D compact" href="#booth-D17" style="left:24.513%;top:22.139%;width:1.858%;height:3.163%" aria-label="D17 그린기린"><span class="pin-label">D17</span></a>
+            <a id="booth-D18" class="pin D" href="#booth-D18" style="left:53.186%;top:17.922%;width:3.717%;height:6.175%" aria-label="D18 젠잇"><span class="pin-label">D18</span></a>
+            <a id="booth-D19" class="pin D compact" href="#booth-D19" style="left:12.743%;top:22.139%;width:0.973%;height:1.506%" aria-label="D19 VO6 TCG"><span class="pin-label">D19</span></a>
+            <a id="booth-D20" class="pin D compact" href="#booth-D20" style="left:5.841%;top:17.922%;width:3.717%;height:1.506%" aria-label="D20 미스틱뮤즈"><span class="pin-label">D20</span></a>
+            <a id="booth-D21" class="pin D compact" href="#booth-D21" style="left:16.46%;top:17.922%;width:0.973%;height:1.506%" aria-label="D21 민화"><span class="pin-label">D21</span></a>
+            <a id="booth-D22" class="pin D compact" href="#booth-D22" style="left:22.389%;top:16.416%;width:1.858%;height:3.012%" aria-label="D22 카드하비"><span class="pin-label">D22</span></a>
+            <a id="booth-D23" class="pin D compact" href="#booth-D23" style="left:10.531%;top:8.886%;width:1.947%;height:3.163%" aria-label="D23 제로모션"><span class="pin-label">D23</span></a>
+            <a id="booth-R01" class="pin R" href="#booth-R01" style="left:13.451%;top:63.102%;width:4.513%;height:6.325%" aria-label="R01 갤럭시 스토어 리프레시존"><span class="pin-label">R01</span></a>
+            <a id="booth-R02" class="pin R" href="#booth-R02" style="left:66.372%;top:65.06%;width:4.602%;height:6.325%" aria-label="R02 갤럭시 스토어 리프레시존"><span class="pin-label">R02</span></a>
+            <a id="booth-R03" class="pin R" href="#booth-R03" style="left:37.08%;top:40.813%;width:4.602%;height:6.325%" aria-label="R03 갤럭시 스토어 리프레시존"><span class="pin-label">R03</span></a>
+            <a id="booth-R04" class="pin R" href="#booth-R04" style="left:29.469%;top:16.265%;width:4.779%;height:6.627%" aria-label="R04 NC 리프레시존"><span class="pin-label">R04</span></a>
+            <a id="booth-R05" class="pin R" href="#booth-R05" style="left:43.363%;top:16.265%;width:4.779%;height:6.627%" aria-label="R05 NC 리프레시존"><span class="pin-label">R05</span></a>
+            <a id="booth-R06" class="pin R" href="#booth-R06" style="left:64.071%;top:7.38%;width:8.407%;height:3.614%" aria-label="R06 F&amp;B 리프레시존"><span class="pin-label">R06</span></a>
+            <a id="booth-E01" class="pin E compact" href="#booth-E01" style="left:64.071%;top:5.723%;width:3.717%;height:1.506%" aria-label="E01 메가박스"><span class="pin-label">E01</span></a>
+            <a id="booth-E02" class="pin E compact" href="#booth-E02" style="left:67.788%;top:5.723%;width:2.92%;height:1.506%" aria-label="E02 애니플러스 콜라보카페"><span class="pin-label">E02</span></a>
+            <a id="booth-E03" class="pin E compact" href="#booth-E03" style="left:70.708%;top:5.723%;width:1.77%;height:1.506%" aria-label="E03 오사카당고"><span class="pin-label">E03</span></a>
+            <a id="booth-P01" class="pin P" href="#booth-P01" style="left:36.018%;top:87.5%;width:5.752%;height:3.012%" aria-label="Photo Zone AGF 2026 Stamp Zone" data-related="booth-R04 booth-R05"><span class="pin-label">Photo Zone</span></a>
           </div>
         </div>
       </section>
@@ -633,12 +677,21 @@
     const search = document.querySelector('#search');
     const selection = document.querySelector('#selection');
     const [selectionCode, selectionName] = selection.children;
-    const zoom = document.querySelector('#zoom');
+    const zoomControls = document.querySelector('.zoom-controls');
+    const zoomOut = document.querySelector('#zoom-out');
+    const zoomIn = document.querySelector('#zoom-in');
+    const zoomReset = document.querySelector('#zoom-reset');
     const minimap = document.querySelector('#minimap');
     const minimapRange = document.querySelector('#minimap-range');
     const mapPanel = document.querySelector('.map-panel');
     const rows = new Map([...directory.querySelectorAll('.booth-row')].map((row) => [row.hash, row]));
     const miniaturePins = new Map();
+    const mapPointers = new Map();
+    const zoomScales = [1, 1.25, 1.6, 2, 2.5, 3.2, 4, 5, 6];
+    const maxZoom = zoomScales[zoomScales.length - 1];
+    let zoomScale = 1;
+    let suppressMapClick = false;
+    let minimapDrag;
     let selected;
 
     for (const shape of map.children) {
@@ -660,21 +713,62 @@
       minimapRange.style.height = `${Math.min(1, viewport.clientHeight / height) * 100}%`;
     }
 
-    function center(pin) {
+    function panTo(x, y) {
       viewport.scrollTo({
-        left: pin.offsetLeft + (pin.offsetWidth - viewport.clientWidth) / 2,
-        top: pin.offsetTop + (pin.offsetHeight - viewport.clientHeight) / 2,
+        left: x - viewport.clientWidth / 2,
+        top: y - viewport.clientHeight / 2,
       });
     }
 
-    function setZoom(zoomed, pin) {
+    function viewportPoint(point) {
+      if (!point) return { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 };
+      const bounds = viewport.getBoundingClientRect();
+      return {
+        x: point.x - bounds.left - viewport.clientLeft,
+        y: point.y - bounds.top - viewport.clientTop,
+      };
+    }
+
+    function setZoom(scale, { pin, from, to = from } = {}) {
+      const previous = viewportPoint(from);
+      const previousX = (viewport.scrollLeft + previous.x) / map.clientWidth;
+      const previousY = (viewport.scrollTop + previous.y) / map.clientHeight;
+      zoomScale = Math.max(1, Math.min(maxZoom, scale));
+      const zoomed = zoomScale > 1;
+      map.style.setProperty('--map-width', `${zoomScale * 100}%`);
       map.classList.toggle('zoomed', zoomed);
       viewport.classList.toggle('zoomed', zoomed);
       minimap.hidden = !zoomed;
-      zoom.textContent = zoomed ? '전체 보기' : '확대';
-      if (zoomed && pin) center(pin);
-      if (!zoomed) viewport.scrollTo({ left: 0, top: 0 });
+      zoomOut.disabled = !zoomed;
+      zoomReset.disabled = !zoomed;
+      zoomIn.disabled = zoomScale === maxZoom;
+      if (pin && zoomed) {
+        panTo(pin.offsetLeft + pin.offsetWidth / 2, pin.offsetTop + pin.offsetHeight / 2);
+      } else if (zoomed) {
+        const next = viewportPoint(to);
+        viewport.scrollTo({
+          left: previousX * map.clientWidth - next.x,
+          top: previousY * map.clientHeight - next.y,
+        });
+      } else {
+        viewport.scrollTo({ left: 0, top: 0 });
+      }
       updateMinimap();
+    }
+
+    function pinchGeometry(first, second) {
+      return {
+        center: { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 },
+        distance: Math.max(1, Math.hypot(first.x - second.x, first.y - second.y)),
+      };
+    }
+
+    function minimapPosition(event) {
+      const bounds = minimap.getBoundingClientRect();
+      return {
+        x: (event.clientX - bounds.left - minimap.clientLeft) / minimap.clientWidth * map.clientWidth,
+        y: (event.clientY - bounds.top - minimap.clientTop) / minimap.clientHeight * map.clientHeight,
+      };
     }
 
     function highlight(pin, active) {
@@ -729,7 +823,10 @@
       selectionCode.textContent = pins.map((item) => item.textContent).join(' · ');
       selectionCode.hidden = false;
       selectionName.textContent = row.lastElementChild.textContent;
-      setZoom(true, pin);
+      const preferredZoom = zoomScales.find((scale) => (
+        scale >= 1.6 && scale * viewport.clientWidth >= 1000
+      ));
+      setZoom(Math.max(zoomScale, preferredZoom ?? maxZoom), { pin });
       if (mapPanel.getBoundingClientRect().top < 0) {
         mapPanel.scrollIntoView({ block: 'start' });
       }
@@ -745,8 +842,116 @@
       });
     }
 
-    zoom.addEventListener('click', () => {
-      setZoom(!map.classList.contains('zoomed'), selected?.pins[0]);
+    zoomIn.addEventListener('click', () => {
+      setZoom(zoomScales.find((scale) => scale > zoomScale + .001) ?? maxZoom);
+    });
+    zoomOut.addEventListener('click', () => {
+      setZoom(zoomScales.findLast((scale) => scale < zoomScale - .001) ?? 1);
+    });
+    zoomReset.addEventListener('click', () => setZoom(1));
+
+    viewport.addEventListener('wheel', (event) => {
+      if (event.ctrlKey || event.metaKey || !event.deltaY) return;
+      if ((event.deltaY < 0 && zoomScale === maxZoom) || (event.deltaY > 0 && zoomScale === 1)) return;
+      event.preventDefault();
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1;
+      const delta = Math.max(-120, Math.min(120, event.deltaY * unit));
+      setZoom(zoomScale * Math.exp(-delta / 450), { from: { x: event.clientX, y: event.clientY } });
+    }, { passive: false });
+
+    viewport.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || mapPointers.size === 2) return;
+      if (!mapPointers.size) suppressMapClick = false;
+      mapPointers.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+        startX: event.clientX,
+        startY: event.clientY,
+        canPan: event.pointerType === 'touch' || !event.target.closest('.pin'),
+      });
+      event.target.setPointerCapture(event.pointerId);
+      if (mapPointers.size === 2) suppressMapClick = true;
+    });
+    viewport.addEventListener('pointermove', (event) => {
+      const previous = mapPointers.get(event.pointerId);
+      if (!previous) return;
+      const next = { ...previous, x: event.clientX, y: event.clientY };
+      mapPointers.set(event.pointerId, next);
+
+      if (mapPointers.size === 2) {
+        const other = [...mapPointers.values()].find((point) => point !== next);
+        const before = pinchGeometry(previous, other);
+        const after = pinchGeometry(next, other);
+        setZoom(zoomScale * after.distance / before.distance, { from: before.center, to: after.center });
+      } else if (next.canPan && (suppressMapClick || Math.hypot(next.x - next.startX, next.y - next.startY) >= 5)) {
+        suppressMapClick = true;
+        viewport.dataset.panning = '';
+        viewport.scrollBy({ left: previous.x - next.x, top: previous.y - next.y });
+      }
+    });
+    for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      viewport.addEventListener(eventName, (event) => {
+        mapPointers.delete(event.pointerId);
+        if (!mapPointers.size) delete viewport.dataset.panning;
+      });
+    }
+    viewport.addEventListener('dragstart', (event) => event.preventDefault());
+    viewport.addEventListener('click', (event) => {
+      if (!event.detail) return;
+      if (suppressMapClick) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (event.target.closest('.pin')) return;
+      const point = { x: event.clientX, y: event.clientY };
+      const position = viewportPoint(point);
+      const x = (viewport.scrollLeft + position.x) / map.clientWidth;
+      const y = (viewport.scrollTop + position.y) / map.clientHeight;
+      if (zoomScale === 1) setZoom(1.6, { from: point });
+      panTo(x * map.clientWidth, y * map.clientHeight);
+    }, true);
+
+    minimap.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || minimapDrag) return;
+      const { x, y } = minimapPosition(event);
+      const left = viewport.scrollLeft;
+      const top = viewport.scrollTop;
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      const inside = x >= left && x <= left + width && y >= top && y <= top + height;
+      minimapDrag = {
+        pointerId: event.pointerId,
+        offsetX: inside ? x - left - width / 2 : 0,
+        offsetY: inside ? y - top - height / 2 : 0,
+      };
+      minimap.setPointerCapture(event.pointerId);
+      minimap.dataset.dragging = '';
+      if (!inside) panTo(x, y);
+    });
+    minimap.addEventListener('pointermove', (event) => {
+      if (minimapDrag?.pointerId !== event.pointerId) return;
+      const { x, y } = minimapPosition(event);
+      panTo(x - minimapDrag.offsetX, y - minimapDrag.offsetY);
+    });
+    minimap.addEventListener('lostpointercapture', (event) => {
+      if (minimapDrag?.pointerId !== event.pointerId) return;
+      minimapDrag = undefined;
+      delete minimap.dataset.dragging;
+    });
+    minimap.addEventListener('keydown', (event) => {
+      const direction = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+      }[event.key];
+      if (!direction) return;
+      event.preventDefault();
+      viewport.scrollBy({
+        left: direction[0] * viewport.clientWidth / 3,
+        top: direction[1] * viewport.clientHeight / 3,
+      });
     });
     viewport.addEventListener('scroll', updateMinimap, { passive: true });
     window.addEventListener('resize', updateMinimap);
@@ -773,8 +978,9 @@
     search.addEventListener('input', filterBooths);
     window.addEventListener('hashchange', () => select(window.location.hash));
     map.classList.add('enhanced');
+    viewport.dataset.gestures = '';
     search.hidden = false;
-    zoom.hidden = false;
+    zoomControls.hidden = false;
     select(window.location.hash);
   </script>
 </body>
