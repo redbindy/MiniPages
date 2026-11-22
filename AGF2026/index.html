@@ -68,7 +68,7 @@
       gap: .6rem;
       margin-bottom: .65rem;
     }
-    #selection {
+    #selection, #route-map-help {
       display: flex;
       min-width: 0;
       align-items: center;
@@ -82,7 +82,7 @@
     #selection.active { color: #231d33; font-weight: 700; }
     #selection .code { max-width: 100%; background: #fff0ba; color: #593600; }
     .zoom-controls { display: flex; align-items: center; gap: .3rem; }
-    .zoom-controls button {
+    .zoom-controls button, .route-button {
       min-width: 44px;
       min-height: 44px;
       padding-inline: .55rem;
@@ -95,8 +95,8 @@
       font-weight: 700;
       cursor: pointer;
     }
-    .zoom-controls button:not(:disabled):hover { background: #eee4fb; }
-    .zoom-controls button:disabled { opacity: .58; cursor: default; }
+    .zoom-controls button:not(:disabled):hover, .route-button:not(:disabled):hover { background: #eee4fb; }
+    .zoom-controls button:disabled, .route-button:disabled { opacity: .58; cursor: default; }
     #zoom-in, #zoom-out { font-size: 1.15rem; }
     .map-tools {
       display: flex;
@@ -249,6 +249,82 @@
     }
 
     h2 { margin: 0 0 .65rem; font-size: 1.15rem; letter-spacing: -.02em; }
+    .directory-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .5rem;
+      margin-bottom: .65rem;
+    }
+    .directory-heading h2 { margin: 0; }
+    #route-toggle[aria-expanded="true"], #route-calculate:not(:disabled) {
+      background: #53358b;
+      color: white;
+    }
+    #route-panel {
+      display: grid;
+      gap: .55rem;
+      padding: .75rem;
+      margin-bottom: .65rem;
+      border: 1px solid #ddd2ee;
+      border-radius: .55rem;
+      background: #faf7ff;
+      font-size: .9rem;
+    }
+    #route-panel p { margin: 0; }
+    #route-status { font-weight: 700; }
+    .route-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+    #route-results { display: grid; gap: .4rem; }
+    #route-candidates {
+      min-height: 44px;
+      width: 100%;
+      padding: .4rem;
+      border: 1px solid #d8cce8;
+      border-radius: .35rem;
+      background: white;
+      color: inherit;
+      font: inherit;
+    }
+    #route-order { max-height: 6rem; overflow: auto; line-height: 1.55; }
+    #route-note { color: #514561; }
+    #map .pin.route-picked, #minimap .pin.route-picked {
+      z-index: 2;
+      outline: 2px solid #59358e;
+      outline-offset: 0;
+      box-shadow: 0 0 0 2px white;
+    }
+    #minimap .pin.route-picked { outline-width: 1px; box-shadow: none; }
+    #route-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+    .route-segment {
+      position: absolute;
+      height: 3px;
+      border-radius: 2px;
+      transform-origin: left center;
+      background: #4a2a86;
+      box-shadow: 0 0 0 1px white;
+    }
+    .route-segment::after {
+      position: absolute;
+      left: 60%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      border-block: 5px solid transparent;
+      border-left: 8px solid #4a2a86;
+      content: '';
+    }
+    .route-step {
+      position: absolute;
+      z-index: 1;
+      min-width: 1rem;
+      padding: .13rem .23rem;
+      transform: translate(-50%, calc(-100% - 5px));
+      border-radius: 1rem;
+      background: #3b206a;
+      box-shadow: 0 0 0 1px white;
+      color: white;
+      font: 750 .67rem/1 system-ui, sans-serif;
+      text-align: center;
+    }
     #search {
       width: 100%;
       min-height: 44px;
@@ -296,12 +372,13 @@
       line-height: 1.35;
     }
     .booth-row:hover { background: #f5effa; }
-    .booth-row[aria-current="location"] {
+    .booth-row[aria-current="location"], .booth-row.route-picked {
       grid-template-columns: max-content minmax(0, 1fr) max-content;
       background: #fff0ba;
       box-shadow: inset .2rem 0 #c67c00;
       font-weight: 700;
     }
+    .booth-row.route-picked { background: #ede3fa; box-shadow: inset .2rem 0 #59358e; }
     .booth-row[aria-current="location"]::after {
       padding: .22rem .38rem;
       border-radius: .3rem;
@@ -310,6 +387,7 @@
       font-size: .72rem;
       content: '선택됨';
     }
+    .booth-row.route-picked::after { color: #50307c; content: '✓'; }
     .code {
       min-width: 2.55rem;
       padding: .27rem .35rem;
@@ -365,6 +443,7 @@
       <section class="map-panel" aria-label="1층 배치도">
         <div class="toolbar">
           <p id="selection" role="status"><span class="code" hidden></span><span>부스 이름이나 지도 번호를 선택하세요.</span></p>
+          <p id="route-map-help" hidden>지도나 목록에서 방문할 부스를 선택하세요.</p>
           <div class="map-tools">
             <div id="minimap" role="group" tabindex="0" aria-label="미니맵. 사각형을 끌거나 방향키를 눌러 지도 이동" hidden>
               <span id="minimap-range" aria-hidden="true"></span>
@@ -519,7 +598,23 @@
         </div>
       </section>
       <section class="directory" aria-labelledby="directory-title">
-        <h2 id="directory-title">부스 목록</h2>
+        <div class="directory-heading">
+          <h2 id="directory-title">부스 목록</h2>
+          <button class="route-button" id="route-toggle" type="button" aria-expanded="false" aria-controls="route-panel" hidden>추천 경로</button>
+        </div>
+        <section id="route-panel" aria-label="추천 경로" hidden>
+          <p id="route-status" role="status">부스를 2개 이상 선택하세요.</p>
+          <div class="route-actions">
+            <button class="route-button" id="route-calculate" type="button" disabled>경로 계산</button>
+            <button class="route-button" id="route-clear" type="button" disabled>선택 초기화</button>
+          </div>
+          <div id="route-results" hidden>
+            <label for="route-candidates">출발 부스별 추천 경로</label>
+            <select id="route-candidates"></select>
+            <p id="route-order" aria-live="polite"></p>
+          </div>
+          <p id="route-note">현장 상황(대기 시간, 실제 부스간 거리)이 반영되지 않아 최적의 경로가 아닐 수 있습니다.</p>
+        </section>
         <input id="search" type="search" aria-label="부스 이름 또는 번호" placeholder="부스 이름 또는 번호" hidden>
         <div id="booths">
           <section class="category A">
@@ -671,6 +766,116 @@
     </div>
   </main>
   <script>
+    async function solveRoutes(points, pause) {
+      const count = points.length;
+      const distances = points.map((point) => Float64Array.from(points, (other) => (
+        Math.hypot(point.x - other.x, point.y - other.y)
+      )));
+      const exact = count <= 15;
+      const routes = [];
+
+      if (exact) {
+        const all = (1 << count) - 1;
+        // Each entry stores the cheapest way to visit the remaining set from the current booth.
+        const cost = new Float64Array((all + 1) * count);
+        const next = new Uint8Array(cost.length);
+        for (let remaining = 1; remaining <= all; remaining++) {
+          for (let current = 0; current < count; current++) {
+            if (remaining & (1 << current)) continue;
+            let bestCost = Infinity;
+            let bestBooth = 0;
+            for (let candidates = remaining; candidates; candidates &= candidates - 1) {
+              const bit = candidates & -candidates;
+              const booth = 31 - Math.clz32(bit);
+              const candidateCost = distances[current][booth] + cost[(remaining ^ bit) * count + booth];
+              if (candidateCost < bestCost) {
+                bestCost = candidateCost;
+                bestBooth = booth;
+              }
+            }
+            cost[remaining * count + current] = bestCost;
+            next[remaining * count + current] = bestBooth;
+          }
+          if (pause && remaining % 256 === 0) await pause();
+        }
+        for (let start = 0; start < count; start++) {
+          let remaining = all ^ (1 << start);
+          const distance = cost[remaining * count + start];
+          const order = [start];
+          let current = start;
+          while (remaining) {
+            current = next[remaining * count + current];
+            order.push(current);
+            remaining ^= 1 << current;
+          }
+          routes.push({ order, distance });
+        }
+      } else {
+        for (let start = 0; start < count; start++) {
+          const order = nearestFirst(start);
+          improveOrder(order);
+          const distance = order.slice(1).reduce((sum, booth, index) => sum + distances[order[index]][booth], 0);
+          routes.push({ order, distance });
+          if (pause && start % 4 === 3) await pause();
+        }
+      }
+
+      routes.sort((first, second) => first.distance - second.distance || first.order[0] - second.order[0]);
+      return { exact, routes };
+
+      function nearestFirst(start) {
+        const order = [start];
+        const visited = new Uint8Array(count);
+        visited[start] = 1;
+        while (order.length < count) {
+          const current = order[order.length - 1];
+          let nearest = -1;
+          let distance = Infinity;
+          for (let booth = 0; booth < count; booth++) {
+            if (!visited[booth] && distances[current][booth] < distance) {
+              distance = distances[current][booth];
+              nearest = booth;
+            }
+          }
+          order.push(nearest);
+          visited[nearest] = 1;
+        }
+        return order;
+      }
+
+      function improveOrder(order) {
+        // Reverse the best segment per pass while keeping the start fixed and the end open.
+        for (let pass = 0; pass < 5; pass++) {
+          let bestGain = 1e-9;
+          let first = -1;
+          let last = -1;
+          for (let left = 1; left < count - 1; left++) {
+            const before = order[left - 1];
+            const leftBooth = order[left];
+            for (let right = left + 1; right < count; right++) {
+              const rightBooth = order[right];
+              let gain = distances[before][leftBooth] - distances[before][rightBooth];
+              if (right + 1 < count) {
+                const after = order[right + 1];
+                gain += distances[rightBooth][after] - distances[leftBooth][after];
+              }
+              if (gain > bestGain) {
+                bestGain = gain;
+                first = left;
+                last = right;
+              }
+            }
+          }
+          if (first < 0) break;
+          while (first < last) {
+            [order[first], order[last]] = [order[last], order[first]];
+            first++;
+            last--;
+          }
+        }
+      }
+    }
+
     const map = document.querySelector('#map');
     const viewport = document.querySelector('#viewport');
     const directory = document.querySelector('#booths');
@@ -684,15 +889,30 @@
     const minimap = document.querySelector('#minimap');
     const minimapRange = document.querySelector('#minimap-range');
     const mapPanel = document.querySelector('.map-panel');
+    const routeToggle = document.querySelector('#route-toggle');
+    const routePanel = document.querySelector('#route-panel');
+    const routeMapHelp = document.querySelector('#route-map-help');
+    const routeStatus = document.querySelector('#route-status');
+    const routeCalculate = document.querySelector('#route-calculate');
+    const routeClear = document.querySelector('#route-clear');
+    const routeResults = document.querySelector('#route-results');
+    const routeCandidates = document.querySelector('#route-candidates');
+    const routeOrder = document.querySelector('#route-order');
     const rows = new Map([...directory.querySelectorAll('.booth-row')].map((row) => [row.hash, row]));
     const miniaturePins = new Map();
     const mapPointers = new Map();
+    const routeBooths = new Set();
+    const planWidth = 1130;
+    const planHeight = 664;
     const zoomScales = [1, 1.25, 1.6, 2, 2.5, 3.2, 4, 5, 6];
     const maxZoom = zoomScales[zoomScales.length - 1];
     let zoomScale = 1;
     let suppressMapClick = false;
     let minimapDrag;
     let selected;
+    let routeJob;
+    let routeOptions = [];
+    let routePoints = [];
 
     for (const shape of map.children) {
       const miniature = document.createElement('span');
@@ -700,6 +920,62 @@
       miniature.style.cssText = shape.style.cssText;
       minimap.append(miniature);
       if (shape.id) miniaturePins.set(shape.id, miniature);
+    }
+    const routeLayer = document.createElement('div');
+    routeLayer.id = 'route-layer';
+    routeLayer.setAttribute('aria-hidden', 'true');
+    map.append(routeLayer);
+
+    function solveInWorker(points, signal) {
+      return new Promise((resolve, reject) => {
+        const source = `self.onmessage = async ({ data }) => {
+          try {
+            self.postMessage(await (${solveRoutes.toString()})(data));
+          } catch (error) {
+            self.postMessage({ error: error.message });
+          }
+        };`;
+        const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+        let worker;
+        try {
+          worker = new Worker(url);
+        } catch (error) {
+          URL.revokeObjectURL(url);
+          reject(error);
+          return;
+        }
+
+        function finish(callback, value) {
+          worker.terminate();
+          URL.revokeObjectURL(url);
+          signal.removeEventListener('abort', cancel);
+          callback(value);
+        }
+        const cancel = () => finish(reject, signal.reason);
+        signal.addEventListener('abort', cancel, { once: true });
+        worker.onmessage = ({ data }) => {
+          if (data.error) finish(reject, new Error(data.error));
+          else finish(resolve, data);
+        };
+        worker.onerror = (event) => {
+          event.preventDefault();
+          finish(reject, new Error(event.message));
+        };
+        worker.postMessage(points);
+      });
+    }
+
+    async function calculateRoutes(points, signal) {
+      try {
+        return await solveInWorker(points, signal);
+      } catch (error) {
+        if (signal.aborted) throw error;
+        // Keep the directly opened HTML usable if the browser blocks a Blob worker.
+        return solveRoutes(points, async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          if (signal.aborted) throw signal.reason;
+        });
+      }
     }
 
     function updateMinimap() {
@@ -776,6 +1052,160 @@
       miniaturePins.get(pin.id).classList.toggle('is-selected', active);
     }
 
+    function setRoutePick(hash, picked) {
+      const pin = document.getElementById(hash.slice(1));
+      for (const link of [pin, rows.get(hash)]) {
+        link.classList.toggle('route-picked', picked);
+        link.setAttribute('aria-pressed', String(picked));
+      }
+      miniaturePins.get(pin.id).classList.toggle('route-picked', picked);
+    }
+
+    function updateRouteSelection() {
+      const count = routeBooths.size;
+      routeStatus.textContent = count < 2 ? `${count}개 선택 · 최소 2개 필요` : `${count}개 부스 선택`;
+      routeMapHelp.textContent = count ? `방문할 부스 ${count}개 선택` : '지도나 목록에서 방문할 부스를 선택하세요.';
+      routeCalculate.disabled = count < 2;
+      routeClear.disabled = count === 0;
+    }
+
+    function clearRoutePreview() {
+      routeJob?.abort();
+      routeJob = undefined;
+      routeOptions = [];
+      routePoints = [];
+      routeLayer.replaceChildren();
+      routeCandidates.replaceChildren();
+      routeOrder.textContent = '';
+      routeResults.hidden = true;
+    }
+
+    function toggleRoutePick(hash) {
+      const picked = !routeBooths.delete(hash);
+      if (picked) routeBooths.add(hash);
+      setRoutePick(hash, picked);
+      clearRoutePreview();
+      updateRouteSelection();
+    }
+
+    function clearRoutePicks() {
+      for (const hash of routeBooths) setRoutePick(hash, false);
+      routeBooths.clear();
+      clearRoutePreview();
+      updateRouteSelection();
+    }
+
+    function setRouteMode(active) {
+      if (!active) clearRoutePicks();
+      routePanel.hidden = !active;
+      routeMapHelp.hidden = !active;
+      selection.hidden = active;
+      routeToggle.setAttribute('aria-expanded', String(active));
+      routeToggle.textContent = active ? '경로 종료' : '추천 경로';
+
+      for (const [hash, row] of rows) {
+        for (const link of [row, document.getElementById(hash.slice(1))]) {
+          if (active) {
+            link.setAttribute('role', 'button');
+            link.setAttribute('aria-pressed', 'false');
+          } else {
+            link.removeAttribute('role');
+            link.removeAttribute('aria-pressed');
+          }
+        }
+      }
+      if (selected) {
+        for (const link of [selected.row, selected.pins[0]]) {
+          if (active) link.removeAttribute('aria-current');
+          else link.setAttribute('aria-current', 'location');
+        }
+        map.classList.toggle('has-selection', !active);
+        selected.pins.forEach((pin) => highlight(pin, !active));
+      }
+      if (active) updateRouteSelection();
+    }
+
+    function readRoutePoint(hash) {
+      const pin = document.getElementById(hash.slice(1));
+      const { left, top, width, height } = pin.style;
+      return {
+        label: pin.textContent,
+        name: rows.get(hash).lastElementChild.textContent,
+        x: (parseFloat(left) + parseFloat(width) / 2) / 100 * planWidth,
+        y: (parseFloat(top) + parseFloat(height) / 2) / 100 * planHeight,
+      };
+    }
+
+    function drawRoute(order) {
+      const elements = [];
+      for (let step = 1; step < order.length; step++) {
+        const from = routePoints[order[step - 1]];
+        const to = routePoints[order[step]];
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const segment = document.createElement('span');
+        segment.className = 'route-segment';
+        segment.style.left = `${from.x / planWidth * 100}%`;
+        segment.style.top = `${from.y / planHeight * 100}%`;
+        segment.style.width = `${Math.hypot(dx, dy) / planWidth * 100}%`;
+        segment.style.transform = `translateY(-50%) rotate(${Math.atan2(dy, dx)}rad)`;
+
+        const number = document.createElement('span');
+        number.className = 'route-step';
+        number.textContent = step;
+        number.style.left = `${(from.x + dx * .6) / planWidth * 100}%`;
+        number.style.top = `${(from.y + dy * .6) / planHeight * 100}%`;
+        elements.push(segment, number);
+      }
+      routeLayer.replaceChildren(...elements);
+    }
+
+    function showRoute() {
+      const route = routeOptions[routeCandidates.selectedIndex - 1];
+      if (!route) return;
+      const labels = route.order.map((booth) => routePoints[booth].label);
+      drawRoute(route.order);
+      routeOrder.textContent = labels.join(' → ');
+      routeMapHelp.textContent = `${labels[0]} 출발 · 화살표 번호는 이동 순서`;
+      setZoom(1);
+      if (mapPanel.getBoundingClientRect().top < 0) mapPanel.scrollIntoView({ block: 'start' });
+    }
+
+    async function requestRoutes() {
+      if (routeBooths.size < 2 || routeJob) return;
+      clearRoutePreview();
+      const job = new AbortController();
+      routeJob = job;
+      const points = [...routeBooths].map(readRoutePoint);
+      routeCalculate.disabled = true;
+      routeStatus.textContent = `${points.length}개 부스의 경로 계산 중…`;
+      try {
+        const { exact, routes } = await calculateRoutes(points, job.signal);
+        if (routeJob !== job) return;
+        routePoints = points;
+        routeOptions = routes;
+        const prompt = new Option('출발 부스를 선택하세요', '', true, true);
+        prompt.disabled = true;
+        routeCandidates.append(prompt);
+        const formatDistance = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 1 });
+        for (const [index, route] of routes.entries()) {
+          const start = points[route.order[0]];
+          routeCandidates.append(new Option(
+            `${start.label} ${start.name} · 거리 ${formatDistance.format(route.distance)}`, index
+          ));
+        }
+        routeStatus.textContent = `${exact ? '최단 경로' : '근사 경로'} ${routes.length}개 · ${points.length}개 부스`;
+        routeResults.hidden = false;
+      } catch {
+        if (routeJob === job) routeStatus.textContent = '경로를 계산하지 못했습니다. 다시 시도해 주세요.';
+      } finally {
+        if (routeJob === job) {
+          routeJob = undefined;
+          routeCalculate.disabled = false;
+        }
+      }
+    }
+
     function revealRow(row) {
       if (row.parentElement.hidden) {
         search.value = '';
@@ -838,9 +1268,22 @@
         const link = event.target.closest('a');
         if (!link || !rows.has(link.hash) || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        select(link.hash, container === map);
+        if (routePanel.hidden) select(link.hash, container === map);
+        else toggleRoutePick(link.hash);
+      });
+      container.addEventListener('keydown', (event) => {
+        if (routePanel.hidden || event.key !== ' ') return;
+        const link = event.target.closest('a');
+        if (!link || !rows.has(link.hash)) return;
+        event.preventDefault();
+        if (!event.repeat) toggleRoutePick(link.hash);
       });
     }
+
+    routeToggle.addEventListener('click', () => setRouteMode(routePanel.hidden));
+    routeCalculate.addEventListener('click', requestRoutes);
+    routeClear.addEventListener('click', clearRoutePicks);
+    routeCandidates.addEventListener('change', showRoute);
 
     zoomIn.addEventListener('click', () => {
       setZoom(zoomScales.find((scale) => scale > zoomScale + .001) ?? maxZoom);
@@ -976,11 +1419,14 @@
     }
 
     search.addEventListener('input', filterBooths);
-    window.addEventListener('hashchange', () => select(window.location.hash));
+    window.addEventListener('hashchange', () => {
+      if (routePanel.hidden) select(window.location.hash);
+    });
     map.classList.add('enhanced');
     viewport.dataset.gestures = '';
     search.hidden = false;
     zoomControls.hidden = false;
+    routeToggle.hidden = false;
     select(window.location.hash);
   </script>
 </body>
